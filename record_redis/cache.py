@@ -136,7 +136,7 @@ class RedisCache(Cache):
 			if lRecords[sID]:
 
 				# If it's 0, set it to False
-				if sRecord == '0':
+				if lRecords[sID] == '0':
 					lRecords[sID] = False
 
 				# Else, decode it
