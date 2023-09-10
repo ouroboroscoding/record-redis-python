@@ -174,30 +174,60 @@ class RedisCache(Cache):
 				jsonb.encode(record)
 			)
 
-	def add_missing(self, _id: str, ttl = undefined) -> bool:
+	def add_missing(self, _id: str | List[str], ttl = undefined) -> bool:
 		"""Add Missing
 
-		Used to mark IDs as missing from the DB so that they are not \
-		constantly fetched over and over. Helpful against someone maliciously \
-		trying to overload the system
+		Used to mark one or more IDs as missing from the DB so that they are \
+		not constantly fetched over and over
 
 		Arguments:
-			_id (str): The ID of the record that is missing
+			_id (str | str[]): The ID(s) of the record that is missing
 			ttl (int): Optional, used to set the ttl for this record. By \
 						default the ttl used is the same as stored records
 
 		Returns:
-			bool
+			bool | bool[]
 		"""
+
+		# Get the length
+		try:
+			iLen = len(_id)
+			lIDs = _id
+		except TypeError:
+			iLen = 1
+			lIDs = [_id]
 
 		# If ttl is not set, use the instance one
 		if ttl is undefined:
 			ttl = self.ttl
 
-		# If we have a ttl, use it
-		if ttl:
-			self.__connections[self.server].setex(_id, ttl, '0')
+		# If we have one item only
+		if iLen == 1:
 
-		# Else, put it in the cache forever
+			# If we have a ttl, use it
+			if ttl:
+				return self.__connections[self.server].setex(lIDs[0], ttl, '0')
+
+			# Else, put it in the cache forever
+			else:
+				return self.__connections[self.server].set(lIDs[0], '0')
+
+		# Else, open a pipeline and loop through each
 		else:
-			self.__connections[self.server].set(_id, '0')
+
+			# Get the pipeline
+			oPipe = self.__connections[self.server].pipeline()
+
+			# Go through each ID
+			for sID in lIDs:
+
+				# If we have a ttl, use it
+				if ttl:
+					oPipe.setex(sID, ttl, '0')
+
+				# Else, put it in the cache forever
+				else:
+					oPipe.set(sID, '0')
+
+			# Execute all statements
+			return oPipe.execute()
