@@ -24,7 +24,7 @@ setup(
 	install_requires=[
 		"jsonb>=1.0.0,<1.1",
 		"record-oc>=1.0.0,<1.1",
-		"redis>=5.0.0,<5.1"
+		"namedredis>=1.0.0,<1.1"
 	],
 	test_suite='tests',
 	zip_safe=True

@@ -12,14 +12,12 @@ __created__		= "2023-08-26"
 
 # Ouroboros imports
 import jsonb
+from nredis import nr
 from record import Cache
 import undefined
 
 # Python imports
-from typing import Dict, List, Literal, Union
-
-# Pip imports
-from redis import StrictRedis
+from typing import List, Literal, Union
 
 class RedisCache(Cache):
 	"""Redis Cache
@@ -29,48 +27,6 @@ class RedisCache(Cache):
 	Extends:
 		Cache
 	"""
-
-	__connections: Dict[str, StrictRedis] = {}
-	"""Connections
-
-	Holds the connections per host so that we don't make multiple connections \
-	to the same server
-	"""
-
-	def __new__(cls, conf: dict) -> 'RedisCache':
-		"""New (__new__)
-
-		Python magic method used to make sure multiple Records usng the same \
-		Redis host don't create numerous instances for no reason
-
-		Arguments:
-			conf (dict): Configuration data from the Record instance
-
-		Returns:
-			RedisCache
-		"""
-
-		# If there's any missing values, add them to the conf
-		dServer = {}
-		for k,v in {'host': 'localhost', 'port': 6379, 'db': 0 }.items():
-			try: dServer[k] = conf[k]
-			except KeyError: dServer[k] = v
-
-		# Create the instance
-		oSelf = super().__new__(cls)
-
-		# Add the server name by generating a unique string from the host, port,
-		#	and db
-		oSelf.server = '%(host)s:%(port)d:%(db)d' % dServer
-
-		# Check for the existence of a connection using the given host
-		if oSelf.server not in cls.__connections:
-
-			# Make a new connection under the name
-			cls.__connections[oSelf.server] = StrictRedis(**dServer)
-
-		# Return the instance
-		return oSelf
 
 	def __init__(self, conf: dict):
 		"""Constructor
@@ -88,6 +44,9 @@ class RedisCache(Cache):
 		#	never expire
 		try: self.ttl = int(conf['ttl'], 10)
 		except KeyError: self.ttl = 0
+
+		# Get the redis connection
+		self.redis = nr(conf['redis'])
 
 	def fetch(self,
 		_id: str | List[str]
@@ -111,7 +70,7 @@ class RedisCache(Cache):
 		if isinstance(_id, str):
 
 			# Try to fetch it from the cache
-			sRecord = self.__connections[self.server].get(_id)
+			sRecord = self.redis.get(_id)
 
 			# If it's found
 			if sRecord:
@@ -127,7 +86,7 @@ class RedisCache(Cache):
 			return None
 
 		# Else, we have multiple records to fetch
-		lRecords = self.__connections[self.server].mget(_id)
+		lRecords = self.redis.mget(_id)
 
 		# Go through each one
 		for sID in range(len(_id)):
@@ -161,7 +120,7 @@ class RedisCache(Cache):
 
 		# If we have a ttl, use it
 		if self.ttl:
-			self.__connections[self.server].setex(
+			self.redis.setex(
 				_id,
 				self.ttl,
 				jsonb.encode(record)
@@ -169,7 +128,7 @@ class RedisCache(Cache):
 
 		# Else, put it in the cache forever
 		else:
-			self.__connections[self.server].set(
+			self.redis.set(
 				_id,
 				jsonb.encode(record)
 			)
@@ -206,17 +165,17 @@ class RedisCache(Cache):
 
 			# If we have a ttl, use it
 			if ttl:
-				return self.__connections[self.server].setex(lIDs[0], ttl, '0')
+				return self.redis.setex(lIDs[0], ttl, '0')
 
 			# Else, put it in the cache forever
 			else:
-				return self.__connections[self.server].set(lIDs[0], '0')
+				return self.redis.set(lIDs[0], '0')
 
 		# Else, open a pipeline and loop through each
 		else:
 
 			# Get the pipeline
-			oPipe = self.__connections[self.server].pipeline()
+			oPipe = self.redis.pipeline()
 
 			# Go through each ID
 			for sID in lIDs:
