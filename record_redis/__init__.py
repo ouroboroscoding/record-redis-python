@@ -12,9 +12,6 @@ __created__		= "2023-08-26"
 # Limit imports
 __all__ = [ 'register' ]
 
-# Ouroboros imports
-from record import Cache
-
 # Local imports
 from record_redis.cache import RedisCache
 

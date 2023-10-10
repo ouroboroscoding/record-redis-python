@@ -42,8 +42,9 @@ class RedisCache(Cache):
 
 		# Store the time to live if there is one, otherwise, assume records
 		#	never expire
-		try: self.ttl = int(conf['ttl'], 10)
+		try: self.ttl = int(conf['ttl'])
 		except KeyError: self.ttl = 0
+		except TypeError: self.ttl = 0
 
 		# Get the redis connection
 		self.redis = nr(conf['redis'])
