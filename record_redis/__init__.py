@@ -9,8 +9,8 @@ __copyright__	= "Ouroboros Coding Inc."
 __email__		= "chris@ouroboroscoding.com"
 __created__		= "2023-08-26"
 
-# Limit imports
-__all__ = [ 'register' ]
+# Limit imports (this module exports nothing)
+__all__ = [ ]
 
 # Local imports
 from record_redis.cache import RedisCache
