@@ -18,7 +18,7 @@ from tools import evaluate
 import undefined
 
 # Python imports
-from typing import List, Literal, Union
+from typing import List, Union
 
 # Constants
 _GET_SECONDARY = """
@@ -49,12 +49,12 @@ class RedisCache(Cache):
 
 		# Store the time to live if there is one, otherwise, assume records
 		#	never expire
-		try: self._ttl = int(conf['ttl'])
+		try: self._ttl = int(conf['redis']['ttl'])
 		except KeyError: self._ttl = 0
 		except TypeError: self._ttl = 0
 
 		# Get the redis connection
-		self._redis = nr(conf['redis'])
+		self._redis = nr(conf['redis']['name'])
 
 		# Add the lua script for fetching secondary indexes
 		self._get_secondary = self._redis.register_script(_GET_SECONDARY)
@@ -66,46 +66,29 @@ class RedisCache(Cache):
 		if 'indexes' in conf:
 
 			# If it's not a list
-			if not isinstance(conf['indexes'], list):
+			if not isinstance(conf['indexes'], dict):
 				raise ValueError(
 					'conf.indexes',
-					'Cache config indexes must be dict[]'
+					'Cache config indexes must be dict'
 				)
 
 			# Go through each one
-			for i in range(len(conf['indexes'])):
+			for sName, mValue in conf['indexes'].items():
 
-				# If it's not a dict
-				if not isinstance(conf['indexes'][i], dict):
+				# If it's a str, it's just one field
+				if isinstance(mValue, str):
+					self._indexes[sName] = [ mValue ]
+
+				# Else, if it's a list of fields
+				elif isinstance(mValue, list):
+					self._indexes[sName] = mValue
+
+				# Else, we got something invalid
+				else:
 					raise ValueError(
-						'conf.indexes[%d]' % i,
-						'Cache config indexes must be dict'
+						'conf.indexes.%s' % sName,
+						'Cache config indexes must be str or list'
 					)
-
-				# Look for missing info
-				try: evaluate(conf['indexes'][i], ['fields', 'name'])
-				except ValueError as e:
-					raise ValueError('conf.indexes[%d]' % i, e.args)
-
-				# Make sure the fields are a string or a list
-				if not isinstance(conf['indexes'][i]['fields'], list):
-
-					# If it's a string, make it a list of one
-					if isinstance(conf['indexes'][i]['fields'], str):
-						conf['indexes'][i]['fields'] = [
-							conf['indexes'][i]['fields']
-						]
-
-					# Else, it's invalid
-					else:
-						raise ValueError(
-							'conf.indexes[%d].fields' % i,
-							'Cache config index fields must be str | str[]'
-						)
-
-				# Store the index
-				self._indexes[conf['indexes'][i]['name']] = \
-					conf['indexes'][i]['fields']
 
 	def add_missing(self, _id: str | List[str], ttl = undefined) -> bool:
 		"""Add Missing
@@ -151,11 +134,11 @@ class RedisCache(Cache):
 			# Execute all statements
 			return oPipe.execute()
 
-	def fetch(self,
+	def get(self,
 		_id: str | tuple | List[str] | List[tuple],
 		index = undefined
-	) -> None | False | dict | List[None, False, dict]:
-		"""Fetch
+	) -> None | False | dict | List[Union[None, False, dict]]:
+		"""Get
 
 		Fetches one or more records from the cache. If a record does not \
 		exist, None is returned, if the record has previously been marked as \
@@ -166,7 +149,8 @@ class RedisCache(Cache):
 		dict
 
 		Arguments:
-			_id (str | str[]): One or more IDs to fetch from the cache
+			_id (str | str[] | tuple | tuple[]): One or more IDs to fetch from \
+				the cache
 			index (str): An alternate index to use to fetch the record
 
 		Returns:
@@ -273,14 +257,18 @@ class RedisCache(Cache):
 		# Return the list
 		return lRecords
 
-	def store(self, _id: str, record: dict) -> bool:
+	def set(self,
+		_id: str,
+		data: dict
+	) -> bool:
 		"""Store
 
-		Stores a single record in the Cache based on the instances ttl
+		Stores the data under the given ID in the cache. Also stores \
+		additional indexes if passed
 
 		Arguments:
-			_id (str): The ID of the record to store
-			record (dict): The data to store in the cache
+			_id (str): The ID to store the data under
+			data (dict): The data to store under the ID
 
 		Returns:
 			bool
@@ -295,20 +283,20 @@ class RedisCache(Cache):
 			# Add the primary record
 			oPipe.set(
 				_id,
-				jsonb.encode(record),
+				jsonb.encode(data),
 				ex = self._ttl or None
 			)
 
 			# Go through each index
-			for d in self._indexes:
+			for s,d in self._indexes:
 
 				# Generate the index key using the values in the associated
 				#	fields of the record
-				sKey = '%s:%s' % (d['name'], ':'.join([
-					record[s] for s in d['fields']
+				sKey = '%s:%s' % (s, ':'.join([
+					data[s] for s in d['fields']
 				]))
 
-				# Add the ID under the key
+				# Set the ID under the key
 				oPipe.set(sKey, _id, ex = self._ttl or None)
 
 			# Execute the pipeline
@@ -318,6 +306,6 @@ class RedisCache(Cache):
 		else:
 			self._redis.set(
 				_id,
-				jsonb.encode(record),
+				jsonb.encode(data),
 				ex = self._ttl or None
 			)
