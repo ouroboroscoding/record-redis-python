@@ -65,7 +65,7 @@ class RedisCache(Cache):
 		# If there's any indexes
 		if 'indexes' in conf:
 
-			# If it's not a list
+			# If it's not a dict
 			if not isinstance(conf['indexes'], dict):
 				raise ValueError(
 					'conf.indexes',
@@ -288,12 +288,12 @@ class RedisCache(Cache):
 			)
 
 			# Go through each index
-			for s,d in self._indexes:
+			for s,l in self._indexes.items():
 
 				# Generate the index key using the values in the associated
 				#	fields of the record
 				sKey = '%s:%s' % (s, ':'.join([
-					data[s] for s in d['fields']
+					data[s] for s in l
 				]))
 
 				# Set the ID under the key
