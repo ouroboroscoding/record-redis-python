@@ -35,17 +35,21 @@ class RedisCache(Cache):
 		Cache
 	"""
 
-	def __init__(self, conf: dict):
+	def __init__(self, name: str, conf: dict):
 		"""Constructor
 
 		Used to create a new instance of the Redis Cache
 
 		Arguments:
+			name (str): The unique name of the record instance
 			conf (dict): Configuration data from the Record instance
 
 		Returns:
 			RedisCache
 		"""
+
+		# Call the parent init
+		super().__init__(name, conf)
 
 		# Store the time to live if there is one, otherwise, assume records
 		#	never expire
@@ -58,37 +62,6 @@ class RedisCache(Cache):
 
 		# Add the lua script for fetching secondary indexes
 		self._get_secondary = self._redis.register_script(_GET_SECONDARY)
-
-		# Init the indexes
-		self._indexes = {}
-
-		# If there's any indexes
-		if 'indexes' in conf:
-
-			# If it's not a dict
-			if not isinstance(conf['indexes'], dict):
-				raise ValueError(
-					'conf.indexes',
-					'Cache config indexes must be dict'
-				)
-
-			# Go through each one
-			for sName, mValue in conf['indexes'].items():
-
-				# If it's a str, it's just one field
-				if isinstance(mValue, str):
-					self._indexes[sName] = [ mValue ]
-
-				# Else, if it's a list of fields
-				elif isinstance(mValue, list):
-					self._indexes[sName] = mValue
-
-				# Else, we got something invalid
-				else:
-					raise ValueError(
-						'conf.indexes.%s' % sName,
-						'Cache config indexes must be str or list'
-					)
 
 	def add_missing(self, _id: str | List[str], ttl = undefined) -> bool:
 		"""Add Missing
@@ -172,7 +145,7 @@ class RedisCache(Cache):
 				)
 
 			# Generate the key
-			sKey = '%s:%s' % (index, ':'.join(_id))
+			sKey = '%s:%s:%s' % (self._name, index, ':'.join(_id))
 
 			# Fetch the data using the secondary index
 			sRecord = self._get_secondary(keys=[sKey])
@@ -195,7 +168,9 @@ class RedisCache(Cache):
 
 			# If we have an index
 			if index:
-				sRecord = self._get_secondary(keys=['%s:%s' % (index, _id)])
+				sRecord = self._get_secondary(keys=['%s:%s:%s' % (
+					self._name, index, _id
+				)])
 
 			# Else, use the key as is
 			else:
@@ -225,7 +200,8 @@ class RedisCache(Cache):
 			for m in _id:
 
 				# Generate the key
-				sKey = '%s:%s' % (
+				sKey = '%s:%s:%s' % (
+					self._name,
 					index,
 					isinstance(m, tuple) and ':'.join(m) or m
 				)
@@ -292,7 +268,7 @@ class RedisCache(Cache):
 
 				# Generate the index key using the values in the associated
 				#	fields of the record
-				sKey = '%s:%s' % (s, ':'.join([
+				sKey = '%s:%s:%s' % (self._name, s, ':'.join([
 					data[s] for s in l
 				]))
 
