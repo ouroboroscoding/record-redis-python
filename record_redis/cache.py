@@ -17,6 +17,9 @@ from record import Cache
 from tools import evaluate
 import undefined
 
+# Pip imports
+from redis.exceptions import ResponseError
+
 # Python imports
 from typing import List, Union
 
@@ -148,7 +151,10 @@ class RedisCache(Cache):
 			sKey = '%s:%s:%s' % (self._name, index, ':'.join(_id))
 
 			# Fetch the data using the secondary index
-			sRecord = self._get_secondary(keys=[sKey])
+			try:
+				sRecord = self._get_secondary(keys=[sKey])
+			except ResponseError as e:
+				return None
 
 			# If it's found
 			if sRecord:
@@ -168,9 +174,12 @@ class RedisCache(Cache):
 
 			# If we have an index
 			if index:
-				sRecord = self._get_secondary(keys=['%s:%s:%s' % (
-					self._name, index, _id
-				)])
+				try:
+					sRecord = self._get_secondary(keys=['%s:%s:%s' % (
+						self._name, index, _id
+					)])
+				except ResponseError as e:
+					return None
 
 			# Else, use the key as is
 			else:
@@ -210,7 +219,10 @@ class RedisCache(Cache):
 				self._get_secondary(keys=[sKey], args=[], client=oPipe)
 
 			# Execute the pipeline
-			lRecords = oPipe.execute()
+			try:
+				lRecords = oPipe.execute()
+			except ResponseError as e:
+				return None
 
 		# Else, just use regular multi-get
 		else:
